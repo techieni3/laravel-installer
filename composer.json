@@ -1,0 +1,44 @@
+{
+  "name": "techieni3/laravel-installer",
+  "description": "Opinionated Laravel installer",
+  "type": "library",
+  "license": "MIT",
+  "version": "0.0.1",
+  "authors": [
+    {
+      "name": "Nitin Gaikwad",
+      "role": "Developer",
+      "email": "niteen1593@gmail.com"
+    }
+  ],
+  "require": {
+    "php": "^8.3",
+    "illuminate/filesystem": "^11.3",
+    "illuminate/support": "^11.3",
+    "laravel/prompts": "^0.1.18",
+    "symfony/console": "^7.0",
+    "symfony/process": "^7.0"
+  },
+  "require-dev": {
+    "laravel/pint": "^1.15",
+    "phpstan/phpstan": "^1.10"
+  },
+  "bin": [
+    "bin/laravel"
+  ],
+  "scripts": {
+    "pint": "pint"
+  },
+  "autoload": {
+    "psr-4": {
+      "TechieNi3\\LaravelInstaller\\": "src/"
+    }
+  },
+  "config": {
+    "sort-packages": true,
+    "preferred-install": "dist",
+    "optimize-autoloader": true
+  },
+  "minimum-stability": "stable",
+  "prefer-stable": true
+}
