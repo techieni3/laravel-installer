@@ -21,7 +21,6 @@ use TechieNi3\LaravelInstaller\Concerns\ConfiguresPrompts;
 use TechieNi3\LaravelInstaller\Concerns\InteractWithComposerJson;
 use TechieNi3\LaravelInstaller\Concerns\InteractWithGit;
 use TechieNi3\LaravelInstaller\Concerns\InteractWithPackageJson;
-
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\multiselect;
 use function Laravel\Prompts\select;
@@ -125,9 +124,12 @@ class InstallCommand extends Command
         }
 
         $composer = $this->findComposer();
+        $phpBinary = $this->phpBinary();
 
         $commands = [
-            $composer . " create-project laravel/laravel \"{$directory}\" {$version} --remove-vcs --prefer-dist",
+            $composer . " create-project laravel/laravel \"{$directory}\" {$version} --remove-vcs --prefer-dist --no-scripts",
+            $composer . " run post-root-package-install -d \"{$directory}\"",
+            $phpBinary . " \"{$directory}/artisan\" key:generate --ansi",
         ];
 
         if ($directory !== '.' && $input->getOption('force')) {
