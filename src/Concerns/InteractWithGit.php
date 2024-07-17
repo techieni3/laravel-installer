@@ -7,7 +7,6 @@ namespace TechieNi3\LaravelInstaller\Concerns;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Process\Process;
-
 use function Laravel\Prompts\text;
 
 trait InteractWithGit
@@ -25,12 +24,14 @@ trait InteractWithGit
 
     private function createRepository(string $directory, InputInterface $input, OutputInterface $output): void
     {
-        $this->ensureGitUserConfig();
+        // initialize git repository
+        $this->runCommands(['git init -q'], $input, $output, workingPath: $directory);
+
+        $this->ensureGitUserConfig($directory, $input, $output);
 
         $branch = $this->defaultBranch();
 
         $commands = [
-            'git init -q',
             'git add .',
             'git commit -q -m "Set up a fresh Laravel app"',
             "git branch -M {$branch}",
@@ -50,10 +51,10 @@ trait InteractWithGit
         return $process->isSuccessful() && $output ? $output : 'main';
     }
 
-    private function ensureGitUserConfig(): void
+    private function ensureGitUserConfig($directory, InputInterface $input, OutputInterface $output): void
     {
         // Check if username is set
-        $process = new Process(['git', 'config', '--get', 'user.name']);
+        $process = new Process(command: ['git', 'config', '--get', 'user.name'], cwd: $directory);
         $process->run();
         $username = trim($process->getOutput());
 
@@ -67,8 +68,7 @@ trait InteractWithGit
                     : null,
             );
 
-            $process = new Process(['git', 'config', '--local', 'user.name', $username]);
-            $process->run();
+            $this->runCommands(['git config --local user.name "' . $username . '"'], $input, $output, workingPath: $directory);
         }
 
         // Check if email is set
@@ -87,8 +87,7 @@ trait InteractWithGit
                     : null,
             );
 
-            $process = new Process(['git', 'config', '--local', 'user.email', $email]);
-            $process->run();
+            $this->runCommands(['git config --local user.email "' . $email . '"'], $input, $output, workingPath: $directory);
         }
     }
 }
