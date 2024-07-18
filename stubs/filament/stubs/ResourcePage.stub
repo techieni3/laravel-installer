@@ -1,0 +1,11 @@
+<?php
+
+namespace {{ namespace }};
+
+use App\Filament\Base\CreateRecord;
+use {{ resource }};
+
+class {{ resourcePageClass }} extends CreateRecord
+{
+    protected static string $resource = {{ resourceClass }}::class;
+}

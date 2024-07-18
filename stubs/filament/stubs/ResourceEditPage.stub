@@ -1,0 +1,19 @@
+<?php
+
+namespace {{ namespace }};
+
+use App\Filament\Base\EditRecord;
+use {{ resource }};
+use Filament\Pages\Actions;
+
+class {{ resourcePageClass }} extends EditRecord
+{
+    protected static string $resource = {{ resourceClass }}::class;
+
+    protected function getActions(): array
+    {
+        return [
+{{ actions }}
+        ];
+    }
+}

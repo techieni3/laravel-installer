@@ -17,11 +17,14 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Process\PhpExecutableFinder;
 use Symfony\Component\Process\Process;
+use TechieNi3\LaravelInstaller\Concerns\ConfigureFilament;
 use TechieNi3\LaravelInstaller\Concerns\ConfiguresPrompts;
 use TechieNi3\LaravelInstaller\Concerns\InteractWithComposerJson;
 use TechieNi3\LaravelInstaller\Concerns\InteractWithFiles;
 use TechieNi3\LaravelInstaller\Concerns\InteractWithGit;
 use TechieNi3\LaravelInstaller\Concerns\InteractWithPackageJson;
+use TechieNi3\LaravelInstaller\Concerns\InteractWithServiceProviders;
+
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\multiselect;
 use function Laravel\Prompts\select;
@@ -29,11 +32,13 @@ use function Laravel\Prompts\text;
 
 class InstallCommand extends Command
 {
+    use ConfigureFilament;
     use ConfiguresPrompts;
     use InteractWithComposerJson;
     use InteractWithFiles;
     use InteractWithGit;
     use InteractWithPackageJson;
+    use InteractWithServiceProviders;
 
     protected string $breezeStack;
 
@@ -671,11 +676,15 @@ class InstallCommand extends Command
 
         $composerBinary = $this->findComposer();
 
-        $this->appendInFile($directory . '/.gitignore', '/public/css/filament' . PHP_EOL);
-        $this->appendInFile($directory . '/.gitignore', '/public/js/filament' . PHP_EOL);
-
         $commands = [
             $composerBinary . ' require filament/filament -W',
+        ];
+
+        $this->runCommands($commands, $input, $output, workingPath: $directory);
+
+        $this->configureFilament($directory);
+
+        $commands = [
             $this->phpBinary() . ' artisan filament:install --panels',
         ];
 
