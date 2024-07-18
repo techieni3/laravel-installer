@@ -233,8 +233,8 @@ class InstallCommand extends Command
             default: 'sqlite'
         );
 
-        if ($defaultDatabase !== 'sqlite') {
-            $migrate = confirm(label: 'Default database updated. Would you like to run the default database migrations?', default: true);
+        if (in_array($defaultDatabase, ['mysql', 'sqlite'])) {
+            $migrate = confirm(label: 'Would you like to run the default database migrations?', default: false);
         }
 
         return [$defaultDatabase, $migrate ?? false];
