@@ -19,6 +19,7 @@ use Symfony\Component\Process\PhpExecutableFinder;
 use Symfony\Component\Process\Process;
 use TechieNi3\LaravelInstaller\Concerns\ConfiguresPrompts;
 use TechieNi3\LaravelInstaller\Concerns\InteractWithComposerJson;
+use TechieNi3\LaravelInstaller\Concerns\InteractWithFiles;
 use TechieNi3\LaravelInstaller\Concerns\InteractWithGit;
 use TechieNi3\LaravelInstaller\Concerns\InteractWithPackageJson;
 use function Laravel\Prompts\confirm;
@@ -30,6 +31,7 @@ class InstallCommand extends Command
 {
     use ConfiguresPrompts;
     use InteractWithComposerJson;
+    use InteractWithFiles;
     use InteractWithGit;
     use InteractWithPackageJson;
 
@@ -687,36 +689,5 @@ class InstallCommand extends Command
     private function canResolveHostname($hostname): bool
     {
         return gethostbyname($hostname . '.') !== $hostname . '.';
-    }
-
-    private function replaceInFile(string|array $search, string|array $replace, string $file): void
-    {
-        file_put_contents(
-            $file,
-            str_replace($search, $replace, file_get_contents($file))
-        );
-    }
-
-    private function appendInFile(string $file, string $data): void
-    {
-        file_put_contents($file, $data, FILE_APPEND);
-    }
-
-    private function replaceFile(string $replace, string $file): void
-    {
-        $stubs = dirname(__DIR__) . '/stubs';
-
-        file_put_contents(
-            $file,
-            file_get_contents("{$stubs}/{$replace}"),
-        );
-    }
-
-    private function pregReplaceInFile(string $pattern, string $replace, string $file): void
-    {
-        file_put_contents(
-            $file,
-            preg_replace($pattern, $replace, file_get_contents($file))
-        );
     }
 }
