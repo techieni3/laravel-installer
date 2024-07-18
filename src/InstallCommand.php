@@ -262,6 +262,11 @@ class InstallCommand extends Command
                 $this->commentDatabaseConfigurationForSqlite($directory);
             }
 
+            // create database.sqlite file if doesn't exist
+            if ( ! file_exists($directory . '/database/database.sqlite')) {
+                touch($directory . '/database/database.sqlite');
+            }
+
             return;
         }
 
@@ -270,7 +275,7 @@ class InstallCommand extends Command
 
         // delete default database.sqlite file if exists
         if (file_exists($directory . '/database/database.sqlite')) {
-            unlink($directory . '/database/database.sqlite');
+            @unlink($directory . '/database/database.sqlite');
         }
 
         $defaultPorts = [
