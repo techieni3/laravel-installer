@@ -25,7 +25,6 @@ use TechieNi3\LaravelInstaller\Concerns\InteractWithFiles;
 use TechieNi3\LaravelInstaller\Concerns\InteractWithGit;
 use TechieNi3\LaravelInstaller\Concerns\InteractWithPackageJson;
 use TechieNi3\LaravelInstaller\Concerns\InteractWithServiceProviders;
-
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\multiselect;
 use function Laravel\Prompts\select;
@@ -169,6 +168,10 @@ class InstallCommand extends Command
                 $this->runCommands([
                     $this->phpBinary() . ' artisan migrate',
                 ], $input, $output, workingPath: $directory);
+            }
+
+            if (! $input->getOption('breeze')) {
+                $this->cleanUpDefaultLaravelFiles($directory);
             }
 
             $this->createRepository($directory, $input, $output);
@@ -707,5 +710,16 @@ class InstallCommand extends Command
     private function canResolveHostname($hostname): bool
     {
         return gethostbyname($hostname . '.') !== $hostname . '.';
+    }
+
+    private function cleanUpDefaultLaravelFiles(mixed $directory): void
+    {
+        $newBodyContent = <<<'HTML'
+          <div style="height: 100vh; display: grid; place-items: center; font-size: 3rem;">
+            <h1>Hello World</h1>
+          </div>
+       HTML;
+
+        file_put_contents($directory . '/resources/views/welcome.blade.php', $newBodyContent);
     }
 }
