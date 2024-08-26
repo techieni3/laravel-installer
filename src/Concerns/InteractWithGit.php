@@ -54,40 +54,35 @@ trait InteractWithGit
     private function ensureGitUserConfig($directory, InputInterface $input, OutputInterface $output): void
     {
         // Check if username is set
-        $process = new Process(command: ['git', 'config', '--get', 'user.name'], cwd: $directory);
-        $process->run();
-        $username = trim($process->getOutput());
+        $gitUsernameCheckProcess = new Process(command: ['git', 'config', '--get', 'user.name'], cwd: $directory);
+        $gitUsernameCheckProcess->run();
 
-        if (empty($username)) {
-            $username = text(
-                label: 'Please enter your Git username',
-                placeholder: 'techieni3',
-                required: 'Git username is required.',
-                validate: fn ($value) => preg_match('/[^\pL\pN\-_.]/', $value) !== 0
-                    ? 'The name may only contain letters, numbers, dashes, underscores, and periods.'
-                    : null,
-            );
+        $username = text(
+            label: 'Please enter your Git username',
+            placeholder: 'techieni3',
+            default: trim($gitUsernameCheckProcess->getOutput()),
+            required: 'Git username is required.',
+            validate: fn ($value) => preg_match('/[^\pL\pN\-_.\s]/u', trim($value)) !== 0
+                ? 'The name may only contain letters, numbers, dashes, underscores, and periods.'
+                : null,
+        );
 
-            $this->runCommands(['git config --local user.name "' . $username . '"'], $input, $output, workingPath: $directory);
-        }
+        $this->runCommands(['git config --local user.name "' . trim($username) . '"'], $input, $output, workingPath: $directory);
 
         // Check if email is set
-        $process = new Process(['git', 'config', '--get', 'user.email']);
-        $process->run();
-        $email = trim($process->getOutput());
+        $gitEmailCheckProcess = new Process(['git', 'config', '--get', 'user.email']);
+        $gitEmailCheckProcess->run();
 
-        if (empty($email)) {
+        $email = text(
+            label: 'Please enter your Git email',
+            placeholder: 'techieni3@example.com',
+            default: trim($gitEmailCheckProcess->getOutput()),
+            required: 'Git email is required.',
+            validate: fn ($value) => filter_var($value, FILTER_VALIDATE_EMAIL) === false
+                ? 'The email is invalid.'
+                : null,
+        );
 
-            $email = text(
-                label: 'Please enter your Git email',
-                placeholder: 'techieni3@example.com',
-                required: 'Git email is required.',
-                validate: fn ($value) => filter_var($value, FILTER_VALIDATE_EMAIL) === false
-                    ? 'The email is invalid.'
-                    : null,
-            );
-
-            $this->runCommands(['git config --local user.email "' . $email . '"'], $input, $output, workingPath: $directory);
-        }
+        $this->runCommands(['git config --local user.email "' . trim($email) . '"'], $input, $output, workingPath: $directory);
     }
 }
