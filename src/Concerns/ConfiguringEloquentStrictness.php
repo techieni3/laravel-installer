@@ -53,7 +53,7 @@ trait ConfiguringEloquentStrictness
                 ),
                 [
                     'comments' => [
-                        new Comment("\n // Add strict mode if the environment is local"),
+                        new Comment('// Add strict mode if the environment is local'),
                     ],
                 ]
             ),
@@ -70,7 +70,7 @@ trait ConfiguringEloquentStrictness
                 ),
                 [
                     'comments' => [
-                        new Comment("\n // Prohibits: db:wipe, migrate:fresh, migrate:refresh, and migrate:reset"),
+                        new Comment('// Prohibits: db:wipe, migrate:fresh, migrate:refresh, and migrate:reset'),
                     ],
                 ]
             ),
