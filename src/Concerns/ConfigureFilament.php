@@ -10,7 +10,6 @@ use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\Expression;
-use RuntimeException;
 
 trait ConfigureFilament
 {
@@ -89,42 +88,5 @@ trait ConfigureFilament
                 ])
             ),
         ];
-    }
-
-    private function copyDir($source, $destination): void
-    {
-        if ( ! is_dir($source)) {
-            return;
-        }
-
-        // Open the source directory
-        $dir = opendir($source);
-
-        if ($dir === false) {
-            throw new RuntimeException("Failed to open directory: {$source}");
-        }
-
-        // Loop through the source directory
-        while (($file = readdir($dir)) !== false) {
-            // Skip the special . and .. folders
-            if ($file === '.' || $file === '..') {
-                continue;
-            }
-
-            $sourcePath = $source . DIRECTORY_SEPARATOR . $file;
-            $destinationPath = $destination . DIRECTORY_SEPARATOR . $file;
-
-            if ( ! is_dir($destination) && ! mkdir($destination, 0755, true) && ! is_dir($destination)) {
-                throw new RuntimeException(sprintf('Directory "%s" was not created', $destination));
-            }
-
-            if ( ! copy($sourcePath, $destinationPath)) {
-                throw new RuntimeException("Failed to copy file: {$sourcePath} to {$destinationPath}");
-            }
-
-        }
-
-        // Close the source directory
-        closedir($dir);
     }
 }
