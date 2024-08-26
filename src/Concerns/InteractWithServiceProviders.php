@@ -86,10 +86,20 @@ trait InteractWithServiceProviders
             echo PHP_EOL;
             echo "{$this->provider}.php has been successfully updated." . PHP_EOL;
             echo PHP_EOL;
+
+            $this->reset();
+
         } catch (Error $error) {
             echo "Parse error: {$error->getMessage()}\n";
 
             return;
         }
+    }
+
+    private function reset(): void
+    {
+        $this->registerMethodBody = [];
+        $this->bootMethodBody = [];
+        $this->useStatements = [];
     }
 }
