@@ -83,7 +83,9 @@ trait InteractWithServiceProviders
 
             file_put_contents($file, $modifiedCode);
 
-            echo "{$this->provider}.php has been successfully updated.\n";
+            echo PHP_EOL;
+            echo "{$this->provider}.php has been successfully updated." . PHP_EOL;
+            echo PHP_EOL;
         } catch (Error $error) {
             echo "Parse error: {$error->getMessage()}\n";
 

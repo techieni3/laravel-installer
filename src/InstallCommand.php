@@ -19,6 +19,7 @@ use Symfony\Component\Process\PhpExecutableFinder;
 use Symfony\Component\Process\Process;
 use TechieNi3\LaravelInstaller\Concerns\ConfigureFilament;
 use TechieNi3\LaravelInstaller\Concerns\ConfiguresPrompts;
+use TechieNi3\LaravelInstaller\Concerns\ConfiguringEloquentStrictness;
 use TechieNi3\LaravelInstaller\Concerns\InteractWithComposerJson;
 use TechieNi3\LaravelInstaller\Concerns\InteractWithFiles;
 use TechieNi3\LaravelInstaller\Concerns\InteractWithGit;
@@ -34,6 +35,7 @@ class InstallCommand extends Command
 {
     use ConfigureFilament;
     use ConfiguresPrompts;
+    use ConfiguringEloquentStrictness;
     use InteractWithComposerJson;
     use InteractWithFiles;
     use InteractWithGit;
@@ -176,6 +178,8 @@ class InstallCommand extends Command
             $this->installGitPreCommitHooks($directory, $input, $output);
 
             $this->installStubs($directory, $input, $output);
+
+            $this->configuringEloquentStrictness($directory, $input, $output);
 
             $this->installPest($directory, $input, $output);
 
