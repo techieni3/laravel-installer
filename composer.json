@@ -16,7 +16,6 @@
     "illuminate/filesystem": "^11.3",
     "illuminate/support": "^11.3",
     "laravel/prompts": "^0.1.18",
-    "nikic/php-parser": "^5.1",
     "symfony/console": "^7.0",
     "symfony/process": "^7.0"
   },

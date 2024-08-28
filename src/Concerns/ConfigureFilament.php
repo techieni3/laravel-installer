@@ -4,12 +4,8 @@ declare(strict_types=1);
 
 namespace TechieNi3\LaravelInstaller\Concerns;
 
-use PhpParser\Node;
-use PhpParser\Node\Arg;
-use PhpParser\Node\Expr\StaticCall;
-use PhpParser\Node\Name;
-use PhpParser\Node\Scalar\String_;
-use PhpParser\Node\Stmt\Expression;
+use TechieNi3\LaravelInstaller\Actions\ReplaceContents;
+use TechieNi3\LaravelInstaller\Replacement;
 
 trait ConfigureFilament
 {
@@ -57,36 +53,38 @@ trait ConfigureFilament
             $directory . '/vite.config.js',
         );
 
-        $this->updateProvider('AppServiceProvider', $directory)
-            ->addNamespaces([
-                'Filament\Support\Facades\FilamentView',
-                'Illuminate\Support\Facades\Blade',
-            ])
-            ->updateRegisterMethod($this->getServiceProviderRegisterMethodUpdateBody())
-            ->save();
+        $replace = new ReplaceContents(file: $directory . '/app/Providers/AppServiceProvider.php');
+
+        $replace->addReplacement($this->getFilamentNameSpaces());
+        $replace->addReplacement($this->getServiceProviderRegisterMethodUpdateBody());
+
+        $replace();
     }
 
-    private function getServiceProviderRegisterMethodUpdateBody(): array
+    private function getFilamentNameSpaces(): Replacement
     {
-        return [
-            new Expression(
-                new StaticCall(new Name('FilamentView'), 'registerRenderHook', [
-                    new Arg(new String_('panels::body.end')),
-                    new Node\Expr\ArrowFunction([
-                        'params' => [],
-                        'returnType' => new Name('string'),
-                        'expr' => new StaticCall(
-                            new Name('Blade'),
-                            'render',
-                            [
-                                new Arg(new Node\Scalar\Encapsed([
-                                    new Node\Scalar\EncapsedStringPart("@vite('resources/js/app.js')"),
-                                ])),
-                            ]
-                        ),
-                    ]),
-                ])
-            ),
-        ];
+        return new Replacement(
+            search: 'namespace App\Providers;',
+            replace: <<<'EOT'
+namespace App\Providers;
+
+use Illuminate\Support\Facades\Blade;
+use Filament\Support\Facades\FilamentView;
+
+EOT,
+        );
+    }
+
+    private function getServiceProviderRegisterMethodUpdateBody(): Replacement
+    {
+        return new Replacement(
+            search: 'public function register(): void {',
+            replace: <<<'EOT'
+    public function register(): void
+    {
+        FilamentView::registerRenderHook('panels::body.end', fn (): string => Blade::render("@vite('resources/js/app.js')"));
+
+EOT,
+        );
     }
 }

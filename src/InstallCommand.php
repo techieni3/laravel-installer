@@ -24,7 +24,6 @@ use TechieNi3\LaravelInstaller\Concerns\InteractWithComposerJson;
 use TechieNi3\LaravelInstaller\Concerns\InteractWithFiles;
 use TechieNi3\LaravelInstaller\Concerns\InteractWithGit;
 use TechieNi3\LaravelInstaller\Concerns\InteractWithPackageJson;
-use TechieNi3\LaravelInstaller\Concerns\InteractWithServiceProviders;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\multiselect;
@@ -40,7 +39,6 @@ class InstallCommand extends Command
     use InteractWithFiles;
     use InteractWithGit;
     use InteractWithPackageJson;
-    use InteractWithServiceProviders;
 
     protected string $breezeStack;
 
