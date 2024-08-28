@@ -25,6 +25,7 @@ use TechieNi3\LaravelInstaller\Concerns\InteractWithFiles;
 use TechieNi3\LaravelInstaller\Concerns\InteractWithGit;
 use TechieNi3\LaravelInstaller\Concerns\InteractWithPackageJson;
 use TechieNi3\LaravelInstaller\Concerns\InteractWithServiceProviders;
+
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\multiselect;
 use function Laravel\Prompts\select;
@@ -170,7 +171,7 @@ class InstallCommand extends Command
                 ], $input, $output, workingPath: $directory);
             }
 
-            if (! $input->getOption('breeze')) {
+            if ( ! $input->getOption('breeze')) {
                 $this->cleanUpDefaultLaravelFiles($directory);
             }
 
@@ -180,9 +181,11 @@ class InstallCommand extends Command
 
             $this->installGitPreCommitHooks($directory, $input, $output);
 
-            $this->installStubs($directory, $input, $output);
+            $this->updateDatabaseSeederToRunWithoutModelEvents($directory);
 
             $this->configuringEloquentStrictness($directory, $input, $output);
+
+            $this->installStubs($directory, $input, $output);
 
             $this->installPest($directory, $input, $output);
 
@@ -721,5 +724,27 @@ class InstallCommand extends Command
        HTML;
 
         file_put_contents($directory . '/resources/views/welcome.blade.php', $newBodyContent);
+    }
+
+    private function updateDatabaseSeederToRunWithoutModelEvents(mixed $directory): void
+    {
+        $this->replaceInFile(
+            search: '// use Illuminate\Database\Console\Seeds\WithoutModelEvents;',
+            replace: 'use Illuminate\Database\Console\Seeds\WithoutModelEvents;',
+            file: $directory . '/database/seeders/DatabaseSeeder.php'
+        );
+
+        $this->replaceInFile(
+            search: <<<'EOT'
+class DatabaseSeeder extends Seeder
+{
+EOT,
+            replace: <<<'EOT'
+class DatabaseSeeder extends Seeder
+{
+    use WithoutModelEvents;
+EOT,
+            file: $directory . '/database/seeders/DatabaseSeeder.php'
+        );
     }
 }
