@@ -7,6 +7,7 @@ namespace TechieNi3\LaravelInstaller\Concerns;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Process\Process;
+
 use function Laravel\Prompts\text;
 
 trait InteractWithGit
