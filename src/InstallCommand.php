@@ -170,7 +170,7 @@ class InstallCommand extends Command
             }
 
             if ( ! $input->getOption('breeze')) {
-                $this->cleanUpDefaultLaravelFiles($directory);
+                $this->cleanUpDefaultLaravelFiles($directory, $name);
             }
 
             $this->createRepository($directory, $input, $output);
@@ -713,11 +713,11 @@ class InstallCommand extends Command
         return gethostbyname($hostname . '.') !== $hostname . '.';
     }
 
-    private function cleanUpDefaultLaravelFiles(mixed $directory): void
+    private function cleanUpDefaultLaravelFiles(mixed $directory, string $name): void
     {
-        $newBodyContent = <<<'HTML'
+        $newBodyContent = <<<HTML
           <div style="height: 100vh; display: grid; place-items: center; font-size: 3rem;">
-            <h1>Hello World</h1>
+            <h1>{$name}</h1>
           </div>
        HTML;
 
