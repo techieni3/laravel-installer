@@ -173,6 +173,8 @@ class InstallCommand extends Command
                 $this->cleanUpDefaultLaravelFiles($directory, $name);
             }
 
+            $this->updateEditorConfig($directory);
+
             $this->createRepository($directory, $input, $output);
 
             $this->configurePint($directory, $input, $output);
@@ -722,6 +724,20 @@ class InstallCommand extends Command
        HTML;
 
         file_put_contents($directory . '/resources/views/welcome.blade.php', $newBodyContent);
+    }
+
+    private function updateEditorConfig(mixed $directory): void
+    {
+        $jsonRule = <<<'EOT'
+
+[*.json]
+indent_size = 2
+
+[composer.json]
+indent_size = 4
+EOT;
+
+        $this->appendInFile($directory . '/.editorconfig', $jsonRule);
     }
 
     private function updateDatabaseSeederToRunWithoutModelEvents(mixed $directory): void
