@@ -173,6 +173,8 @@ class InstallCommand extends Command
                 $this->cleanUpDefaultLaravelFiles($directory, $name);
             }
 
+            $this->updateReadme($directory, $name);
+
             $this->updateEditorConfig($directory);
 
             $this->createRepository($directory, $input, $output);
@@ -724,6 +726,18 @@ class InstallCommand extends Command
        HTML;
 
         file_put_contents($directory . '/resources/views/welcome.blade.php', $newBodyContent);
+    }
+
+    private function updateReadme(mixed $directory, string $name): void
+    {
+        $title = ucwords(str_replace(['_', '-'], ' ', $name));
+
+        $newReadmeContent = <<<EOF
+       # {$title}
+
+       EOF;
+
+        file_put_contents($directory . '/README.md', $newReadmeContent);
     }
 
     private function updateEditorConfig(mixed $directory): void
