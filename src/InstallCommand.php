@@ -173,6 +173,12 @@ class InstallCommand extends Command
                 $this->cleanUpDefaultLaravelFiles($directory, $name);
             }
 
+            // Update composer dependencies and bump versions to latest
+            $this->runCommands([
+                $composer . ' update',
+                $composer . ' bump',
+            ], $input, $output, workingPath: $directory);
+
             $this->updateReadme($directory, $name);
 
             $this->updateEditorConfig($directory);
