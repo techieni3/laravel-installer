@@ -13,15 +13,15 @@
   ],
   "require": {
     "php": "^8.3",
-    "illuminate/filesystem": "^11.3",
-    "illuminate/support": "^11.3",
-    "laravel/prompts": "^0.1.18",
-    "symfony/console": "^7.0",
-    "symfony/process": "^7.0"
+    "illuminate/filesystem": "^11.29",
+    "illuminate/support": "^11.29",
+    "laravel/prompts": "^0.1.25",
+    "symfony/console": "^7.1.5",
+    "symfony/process": "^7.1.5"
   },
   "require-dev": {
-    "laravel/pint": "^1.15",
-    "phpstan/phpstan": "^1.10"
+    "laravel/pint": "^1.18.1",
+    "phpstan/phpstan": "^1.12.7"
   },
   "bin": [
     "bin/laravel"
