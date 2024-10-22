@@ -6,8 +6,8 @@ namespace TechieNi3\LaravelInstaller\Concerns;
 
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
-use TechieNi3\LaravelInstaller\Actions\ReplaceContents;
-use TechieNi3\LaravelInstaller\Replacement;
+use TechieNi3\LaravelInstaller\Handlers\FileHandler;
+use TechieNi3\LaravelInstaller\ValueObjects\Replacements\Replacement;
 
 trait ConfiguringEloquentStrictness
 {
@@ -17,26 +17,26 @@ trait ConfiguringEloquentStrictness
 
         $this->updateUserModel($directory);
 
-        $this->commitChanges('Configure Eloquent strictness.', $directory, $input, $output);
+        $this->installerContext->commitChanges('Configure Eloquent strictness.');
     }
 
     private function updateAppServiceProvider(mixed $directory): void
     {
-        $replace = new ReplaceContents(file: $directory . '/app/Providers/AppServiceProvider.php');
+        $handler = FileHandler::init(file: $directory . '/app/Providers/AppServiceProvider.php');
 
-        $replace->addReplacement($this->getNameSpaces());
-        $replace->addReplacement($this->getModelStrictnessReplacements());
+        $handler->queueReplacement($this->getNameSpaces());
+        $handler->queueReplacement($this->getModelStrictnessReplacements());
 
-        $replace();
+        $handler->applyReplacements();
     }
 
     private function updateUserModel(mixed $directory): void
     {
-        $userModelReplace = new ReplaceContents(file: $directory . '/app/Models/User.php');
+        $handler = FileHandler::init(file: $directory . '/app/Models/User.php');
 
-        $userModelReplace->addReplacement($this->getUserModelStrictnessReplacements());
+        $handler->queueReplacement($this->getUserModelStrictnessReplacements());
 
-        $userModelReplace();
+        $handler->applyReplacements();
     }
 
     private function getNameSpaces(): Replacement

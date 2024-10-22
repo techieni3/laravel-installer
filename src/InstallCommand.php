@@ -4,10 +4,8 @@ declare(strict_types=1);
 
 namespace TechieNi3\LaravelInstaller;
 
-use Illuminate\Filesystem\Filesystem;
-use Illuminate\Support\Composer;
-use Illuminate\Support\ProcessUtils;
 use InvalidArgumentException;
+use JsonException;
 use Override;
 use RuntimeException;
 use Symfony\Component\Console\Command\Command;
@@ -15,15 +13,19 @@ use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\Process\PhpExecutableFinder;
-use Symfony\Component\Process\Process;
-use TechieNi3\LaravelInstaller\Concerns\ConfigureFilament;
 use TechieNi3\LaravelInstaller\Concerns\ConfiguresPrompts;
 use TechieNi3\LaravelInstaller\Concerns\ConfiguringEloquentStrictness;
-use TechieNi3\LaravelInstaller\Concerns\InteractWithComposerJson;
-use TechieNi3\LaravelInstaller\Concerns\InteractWithFiles;
-use TechieNi3\LaravelInstaller\Concerns\InteractWithGit;
-use TechieNi3\LaravelInstaller\Concerns\InteractWithPackageJson;
+use TechieNi3\LaravelInstaller\ConfigFiles\ComposerJson;
+use TechieNi3\LaravelInstaller\ConfigFiles\PackageJson;
+use TechieNi3\LaravelInstaller\Enums\DatabaseType;
+use TechieNi3\LaravelInstaller\Enums\StarterKit;
+use TechieNi3\LaravelInstaller\Handlers\FileHandler;
+use TechieNi3\LaravelInstaller\Handlers\JsonFileHandler;
+use TechieNi3\LaravelInstaller\Installers\FilamentInstaller;
+use TechieNi3\LaravelInstaller\ValueObjects\Replacements\PregReplacement;
+use TechieNi3\LaravelInstaller\ValueObjects\Replacements\Replacement;
+use TechieNi3\LaravelInstaller\ValueObjects\Scripts\ComposerScript;
+use TechieNi3\LaravelInstaller\ValueObjects\Scripts\NpmScript;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\multiselect;
@@ -32,13 +34,8 @@ use function Laravel\Prompts\text;
 
 class InstallCommand extends Command
 {
-    use ConfigureFilament;
     use ConfiguresPrompts;
     use ConfiguringEloquentStrictness;
-    use InteractWithComposerJson;
-    use InteractWithFiles;
-    use InteractWithGit;
-    use InteractWithPackageJson;
 
     protected string $breezeStack;
 
@@ -48,7 +45,7 @@ class InstallCommand extends Command
 
     protected bool $enabledTypeScript = false;
 
-    protected Composer $composer;
+    protected InstallerContext $installerContext;
 
     #[Override]
     protected function configure(): void
@@ -67,46 +64,19 @@ class InstallCommand extends Command
     #[Override]
     protected function interact(InputInterface $input, OutputInterface $output): void
     {
-        $output->write(PHP_EOL . '  <fg=red> _                               _
-  | |                             | |
-  | |     __ _ _ __ __ ___   _____| |
-  | |    / _` | \'__/ _` \ \ / / _ \ |
-  | |___| (_| | | | (_| |\ V /  __/ |
-  |______\__,_|_|  \__,_| \_/ \___|_|</>' . PHP_EOL . PHP_EOL);
+        $this->displayWelcomeMessage($output);
 
         if ( ! $input->getArgument('name')) {
-            $input->setArgument('name', text(
-                label: 'What is the name of your project?',
-                placeholder: 'E.g. example-app',
-                required: 'The project name is required.',
-                validate: fn ($value) => preg_match('/[^\pL\pN\-_.]/', $value) !== 0
-                    ? 'The name may only contain letters, numbers, dashes, underscores, and periods.'
-                    : null,
-            ));
+            $input->setArgument('name', $this->promptForProjectName());
         }
 
         if ( ! $input->getOption('breeze')) {
-            match (select(
-                label: 'Would you like to install a starter kit?',
-                options: [
-                    'none' => 'No starter kit',
-                    'api' => 'API only',
-                    'breeze' => 'Laravel Breeze',
-                    'filament' => 'Filament',
-                ],
-                default: 'none',
-            )) {
-                'breeze' => $input->setOption('breeze', true),
-                'api' => $input->setOption('api', true),
-                'filament' => $input->setOption('filament', true),
-                default => null,
-            };
+            $this->handleStarterKitOption($input);
         }
 
         if ($input->getOption('breeze')) {
             $this->promptForBreezeOptions();
         }
-
     }
 
     #[Override]
@@ -114,13 +84,15 @@ class InstallCommand extends Command
     {
         $this->validateStackOption($input);
 
-        $name = $input->getArgument('name');
+        $projectName = $input->getArgument('name');
 
-        $directory = $name !== '.' ? getcwd() . DIRECTORY_SEPARATOR . $name : '.';
+        $directory = $this->getProjectDirectory($projectName);
 
-        $this->composer = new Composer(new Filesystem(), $directory);
-
-        $version = $this->getVersion($input);
+        $this->installerContext = new InstallerContext(
+            directory: $directory,
+            input: $input,
+            output: $output
+        );
 
         if ( ! $input->getOption('force')) {
             $this->verifyApplicationDoesntExist($directory);
@@ -130,60 +102,43 @@ class InstallCommand extends Command
             throw new RuntimeException('Cannot use --force option when using current directory for installation!');
         }
 
-        $composer = $this->findComposer();
-        $phpBinary = $this->phpBinary();
+        $commands = $this->getInstallCommands($directory, $input);
 
-        $commands = [
-            $composer . " create-project laravel/laravel \"{$directory}\" {$version} --remove-vcs --prefer-dist --no-scripts",
-            $composer . " run post-root-package-install -d \"{$directory}\"",
-            $phpBinary . " \"{$directory}/artisan\" key:generate --ansi",
-        ];
+        if (($process = $this->installerContext->runCommands($commands))->isSuccessful()) {
 
-        if ($directory !== '.' && $input->getOption('force')) {
-            if (PHP_OS_FAMILY === 'Windows') {
-                array_unshift($commands, "(if exist \"{$directory}\" rd /s /q \"{$directory}\")");
-            } else {
-                array_unshift($commands, "rm -rf \"{$directory}\"");
-            }
-        }
+            $envFileHandler = FileHandler::init($directory . '/.env');
 
-        if (PHP_OS_FAMILY !== 'Windows') {
-            $commands[] = "chmod 755 \"{$directory}/artisan\"";
-        }
-
-        if (($process = $this->runCommands($commands, $input, $output))->isSuccessful()) {
-
-            $this->replaceInFile(
-                'APP_URL=http://localhost',
-                'APP_URL=' . $this->generateAppUrl($name),
-                $directory . '/.env'
+            $envFileHandler->queueReplacement(
+                new Replacement(
+                    search: 'APP_URL=http://localhost',
+                    replace: 'APP_URL=' . $this->generateAppUrl($projectName)
+                )
             );
+
+            $envFileHandler->applyReplacements();
 
             [$database, $migrate] = $this->promptForDatabaseOptions();
 
-            $this->configureDefaultDatabaseConnection($directory, $database, $name);
+            $this->configureDefaultDatabaseConnection($directory, $database, $projectName);
 
             if ($migrate) {
-                $this->runCommands([
-                    $this->phpBinary() . ' artisan migrate',
-                ], $input, $output, workingPath: $directory);
+                $this->installerContext->runCommands([
+                    $this->installerContext->php() . ' artisan migrate',
+                ]);
             }
 
             if ( ! $input->getOption('breeze')) {
-                $this->cleanUpDefaultLaravelFiles($directory, $name);
+                $this->cleanUpDefaultLaravelFiles($directory, $projectName);
             }
 
             // Update composer dependencies and bump versions to latest
-            $this->runCommands([
-                $composer . ' update',
-                $composer . ' bump',
-            ], $input, $output, workingPath: $directory);
+            $this->installerContext->updateComposerDependencies();
 
-            $this->updateReadme($directory, $name);
+            $this->updateReadme($directory, $projectName);
 
             $this->updateEditorConfig($directory);
 
-            $this->createRepository($directory, $input, $output);
+            $this->installerContext->createRepository();
 
             $this->configurePint($directory, $input, $output);
 
@@ -199,23 +154,77 @@ class InstallCommand extends Command
 
             if ($input->getOption('breeze')) {
                 $this->installBreeze($directory, $input, $output);
-            } elseif ($input->getOption('api')) {
-                $this->installApi($directory, $input, $output);
-            } elseif ($input->getOption('filament')) {
-                $this->installFilament($directory, $input, $output);
             }
 
-            $output->writeln('');
-            $output->writeln('');
+            if ($input->getOption('api')) {
+                $this->installApi($directory, $input, $output);
+            }
 
-            $output->writeln("  <bg=blue;fg=white> INFO </> Application ready in <options=bold>[{$name}]</>. You can start your local development using:" . PHP_EOL);
+            if ($input->getOption('filament')) {
+                (new FilamentInstaller($this->installerContext))->install();
+            }
 
-            $output->writeln('<fg=gray>➜</> <options=bold>cd ' . $name . '</>');
-            $output->writeln('<fg=gray>➜</> <options=bold>php artisan serve</>');
-            $output->writeln('');
+            $this->displayInstallationCompleteMessage($output, $projectName);
         }
 
         return $process->getExitCode();
+    }
+
+    private function displayWelcomeMessage(OutputInterface $output): void
+    {
+        $output->write(PHP_EOL . '  <fg=red> _                               _
+  | |                             | |
+  | |     __ _ _ __ __ ___   _____| |
+  | |    / _` | \'__/ _` \ \ / / _ \ |
+  | |___| (_| | | | (_| |\ V /  __/ |
+  |______\__,_|_|  \__,_| \_/ \___|_|</>' . PHP_EOL . PHP_EOL);
+    }
+
+    private function displayInstallationCompleteMessage(OutputInterface $output, mixed $projectName): void
+    {
+        $output->writeln('');
+        $output->writeln('');
+
+        $output->writeln("  <bg=blue;fg=white> INFO </> Application ready in <options=bold>[{$projectName}]</>. You can start your local development using:" . PHP_EOL);
+
+        $output->writeln('<fg=gray>➜</> <options=bold>cd ' . $projectName . '</>');
+        $output->writeln('<fg=gray>➜</> <options=bold>php artisan serve</>');
+        $output->writeln('');
+    }
+
+    private function promptForProjectName(): string
+    {
+        return text(
+            label: 'What is the name of your project?',
+            placeholder: 'E.g. example-app',
+            required: 'The project name is required.',
+            validate: fn ($value) => preg_match('/[^\pL\pN\-_.]/u', $value) !== 0
+                ? 'The name may only contain letters, numbers, dashes, underscores, and periods.'
+                : null,
+        );
+    }
+
+    private function handleStarterKitOption(InputInterface $input): void
+    {
+        match (select(
+            label: 'Would you like to install a starter kit?',
+            options: StarterKit::toArray(),
+            default: StarterKit::None->value,
+        )) {
+            'breeze' => $input->setOption('breeze', true),
+            'api' => $input->setOption('api', true),
+            'filament' => $input->setOption('filament', true),
+            default => null,
+        };
+    }
+
+    private function getProjectDirectory(string $name): string
+    {
+        if ($name !== '.') {
+            return getcwd() . DIRECTORY_SEPARATOR . $name;
+        }
+
+        return '.';
     }
 
     private function validateStackOption(InputInterface $input): void
@@ -223,6 +232,38 @@ class InstallCommand extends Command
         if ($input->getOption('breeze') && ! in_array($this->breezeStack, $stacks = ['blade', 'livewire', 'livewire-functional', 'react', 'vue'])) {
             throw new InvalidArgumentException("Invalid Breeze stack [{$input->getOption('stack')}]. Valid options are: " . implode(', ', $stacks) . '.');
         }
+    }
+
+    private function getInstallCommands(string $directory, InputInterface $input): array
+    {
+        $composer = $this->installerContext->composer();
+        $phpBinary = $this->installerContext->php();
+        $version = $this->getVersion($input);
+
+        $commands = [
+            $composer . " create-project laravel/laravel \"{$directory}\" {$version} --remove-vcs --prefer-dist --no-scripts",
+            $composer . " run post-root-package-install -d \"{$directory}\"",
+            $phpBinary . " \"{$directory}/artisan\" key:generate --ansi",
+        ];
+
+        if ($directory !== '.' && $input->getOption('force')) {
+            $commands = array_merge($this->getForceInstallCommand($directory), $commands);
+        }
+
+        if (PHP_OS_FAMILY !== 'Windows') {
+            $commands[] = "chmod 755 \"{$directory}/artisan\"";
+        }
+
+        return $commands;
+    }
+
+    private function getForceInstallCommand(string $directory): array
+    {
+        if (PHP_OS_FAMILY === 'Windows') {
+            return ["(if exist \"{$directory}\" rd /s /q \"{$directory}\")"];
+        }
+
+        return ["rm -rf \"{$directory}\""];
     }
 
     private function getVersion(InputInterface $input): string
@@ -243,20 +284,13 @@ class InstallCommand extends Command
 
     private function promptForDatabaseOptions(): array
     {
-
         $defaultDatabase = select(
             label: 'Which database will your application use?',
-            options: [
-                'mysql' => 'MySQL',
-                'mariadb' => 'MariaDB',
-                'pgsql' => 'PostgreSQL',
-                'sqlite' => 'SQLite',
-                'sqlsrv' => 'SQL Server',
-            ],
-            default: 'sqlite'
+            options: DatabaseType::toArray(),
+            default: DatabaseType::SQLite->value,
         );
 
-        if (in_array($defaultDatabase, ['mysql', 'sqlite'])) {
+        if (in_array($defaultDatabase, [DatabaseType::MySQL->value, DatabaseType::SQLite->value], true)) {
             $migrate = confirm(label: 'Would you like to run the default database migrations?', default: false);
         }
 
@@ -265,19 +299,25 @@ class InstallCommand extends Command
 
     private function configureDefaultDatabaseConnection(string $directory, string $database, string $name): void
     {
-        $this->pregReplaceInFile(
-            '/DB_CONNECTION=.*/',
-            'DB_CONNECTION=' . $database,
-            $directory . '/.env'
-        );
+        (FileHandler::init($directory . '/.env'))
+            ->queuePregReplacement(
+                new PregReplacement(
+                    regex: '/DB_CONNECTION=.*/',
+                    replace: 'DB_CONNECTION=' . $database
+                )
+            )
+            ->applyReplacements();
 
-        $this->pregReplaceInFile(
-            '/DB_CONNECTION=.*/',
-            'DB_CONNECTION=' . $database,
-            $directory . '/.env.example'
-        );
+        (FileHandler::init($directory . '/.env.example'))
+            ->queuePregReplacement(
+                new PregReplacement(
+                    regex: '/DB_CONNECTION=.*/',
+                    replace: 'DB_CONNECTION=' . $database,
+                )
+            )
+            ->applyReplacements();
 
-        if ($database === 'sqlite') {
+        if ($database === DatabaseType::SQLite->value) {
             $environment = file_get_contents($directory . '/.env');
 
             // If database options aren't commented, comment them for SQLite...
@@ -293,8 +333,14 @@ class InstallCommand extends Command
             return;
         }
 
+        $envHandler = FileHandler::init($directory . '/.env');
+        $envExampleHandler = FileHandler::init($directory . '/.env.example');
+
         // Any commented database configuration options should be uncommented when not on SQLite...
-        $this->uncommentDatabaseConfiguration($directory);
+        $unCommentReplacement = $this->uncommentDatabaseConfiguration($directory);
+
+        $envHandler->queueReplacement($unCommentReplacement);
+        $envExampleHandler->queueReplacement($unCommentReplacement);
 
         // delete default database.sqlite file if exists
         if (file_exists($directory . '/database/database.sqlite')) {
@@ -307,30 +353,25 @@ class InstallCommand extends Command
         ];
 
         if (isset($defaultPorts[$database])) {
-            $this->replaceInFile(
-                'DB_PORT=3306',
-                'DB_PORT=' . $defaultPorts[$database],
-                $directory . '/.env'
+            $portReplacement = new Replacement(
+                search: 'DB_PORT=3306',
+                replace: 'DB_PORT=' . $defaultPorts[$database],
             );
 
-            $this->replaceInFile(
-                'DB_PORT=3306',
-                'DB_PORT=' . $defaultPorts[$database],
-                $directory . '/.env.example'
-            );
+            $envHandler->queueReplacement($portReplacement);
+            $envExampleHandler->queueReplacement($portReplacement);
         }
 
-        $this->replaceInFile(
-            'DB_DATABASE=laravel',
-            'DB_DATABASE=' . str_replace('-', '_', mb_strtolower($name)),
-            $directory . '/.env'
+        $dbNameReplacement = new Replacement(
+            search: 'DB_DATABASE=laravel',
+            replace: 'DB_DATABASE=' . str_replace('-', '_', mb_strtolower($name)),
         );
 
-        $this->replaceInFile(
-            'DB_DATABASE=laravel',
-            'DB_DATABASE=' . str_replace('-', '_', mb_strtolower($name)),
-            $directory . '/.env.example'
-        );
+        $envHandler->queueReplacement($dbNameReplacement);
+        $envExampleHandler->queueReplacement($dbNameReplacement);
+
+        $envHandler->applyReplacements();
+        $envExampleHandler->applyReplacements();
     }
 
     private function commentDatabaseConfigurationForSqlite(string $directory): void
@@ -343,20 +384,23 @@ class InstallCommand extends Command
             'DB_PASSWORD=',
         ];
 
-        $this->replaceInFile(
-            $defaults,
-            collect($defaults)->map(fn ($default) => "# {$default}")->all(),
-            $directory . '/.env'
+        $commentedDefaults = collect($defaults)->map(static fn ($default) => "# {$default}")->all();
+
+        $commentReplacement = new Replacement(
+            search: $defaults,
+            replace: $commentedDefaults
         );
 
-        $this->replaceInFile(
-            $defaults,
-            collect($defaults)->map(fn ($default) => "# {$default}")->all(),
-            $directory . '/.env.example'
-        );
+        (FileHandler::init($directory . '/.env'))
+            ->queueReplacement($commentReplacement)
+            ->applyReplacements();
+
+        (FileHandler::init($directory . '/.env.example'))
+            ->queueReplacement($commentReplacement)
+            ->applyReplacements();
     }
 
-    private function uncommentDatabaseConfiguration(string $directory): void
+    private function uncommentDatabaseConfiguration(string $directory): Replacement
     {
         $defaults = [
             '# DB_HOST=127.0.0.1',
@@ -366,16 +410,11 @@ class InstallCommand extends Command
             '# DB_PASSWORD=',
         ];
 
-        $this->replaceInFile(
-            $defaults,
-            collect($defaults)->map(fn ($default) => mb_substr($default, 2))->all(),
-            $directory . '/.env'
-        );
+        $commentedDefaults = collect($defaults)->map(static fn ($default) => mb_substr($default, 2))->all();
 
-        $this->replaceInFile(
-            $defaults,
-            collect($defaults)->map(fn ($default) => mb_substr($default, 2))->all(),
-            $directory . '/.env.example'
+        return new Replacement(
+            search: $defaults,
+            replace: $commentedDefaults
         );
     }
 
@@ -455,90 +494,18 @@ class InstallCommand extends Command
         $this->enabledTypeScript = true;
     }
 
-    private function findComposer(): string
+    private function installBreeze(): void
     {
-        return implode(' ', $this->composer->findComposer());
-    }
-
-    private function phpBinary(): string
-    {
-        $phpBinary = (new PhpExecutableFinder)->find(false);
-
-        return $phpBinary !== false
-            ? ProcessUtils::escapeArgument($phpBinary)
-            : 'php';
-    }
-
-    private function findNode(): ?string
-    {
-        $process = new Process(['which', 'npm']);
-
-        $process->run();
-
-        $output = trim($process->getOutput());
-
-        return $process->isSuccessful() && $output ? ProcessUtils::escapeArgument($output) : null;
-    }
-
-    private function runCommands(array $commands, InputInterface $input, OutputInterface $output, ?string $workingPath = null, array $env = []): Process
-    {
-        if ( ! $output->isDecorated()) {
-            $commands = array_map(static function ($value) {
-                if (str_starts_with($value, 'chmod')) {
-                    return $value;
-                }
-
-                if (str_starts_with($value, 'git')) {
-                    return $value;
-                }
-
-                return $value . ' --no-ansi';
-            }, $commands);
-        }
-
-        if ($input->getOption('quiet')) {
-            $commands = array_map(static function ($value) {
-                if (str_starts_with($value, 'chmod')) {
-                    return $value;
-                }
-
-                if (str_starts_with($value, 'git')) {
-                    return $value;
-                }
-
-                return $value . ' --quiet';
-            }, $commands);
-        }
-
-        $process = Process::fromShellCommandline(implode(' && ', $commands), $workingPath, $env, null, null);
-
-        if ('\\' !== DIRECTORY_SEPARATOR && file_exists('/dev/tty') && is_readable('/dev/tty')) {
-            try {
-                $process->setTty(true);
-            } catch (RuntimeException $e) {
-                $output->writeln('  <bg=yellow;fg=black> WARN </> ' . $e->getMessage() . PHP_EOL);
-            }
-        }
-
-        $process->run(function ($type, $line) use ($output): void {
-            $output->write('    ' . $line);
-        });
-
-        return $process;
-    }
-
-    private function installBreeze(string $directory, InputInterface $input, OutputInterface $output): void
-    {
-        $output->writeln([
+        $this->installerContext->getOutput()->writeln([
             '',
             '<comment>Installing laravel breeze...</comment>',
             '',
         ]);
 
         $commands = array_filter([
-            $this->findComposer() . ' require laravel/breeze',
+            $this->installerContext->composer() . ' require laravel/breeze',
             trim(sprintf(
-                $this->phpBinary() . ' artisan breeze:install %s %s %s %s %s',
+                $this->installerContext->php() . ' artisan breeze:install %s %s %s %s %s',
                 $this->breezeStack,
                 '--pest',
                 $this->enabledTypeScript ? '--typescript' : '',
@@ -547,20 +514,20 @@ class InstallCommand extends Command
             )),
         ]);
 
-        $this->runCommands($commands, $input, $output, workingPath: $directory);
+        $this->installerContext->runCommands($commands);
 
-        $this->commitChanges('Install Breeze.', $directory, $input, $output);
+        $this->installerContext->commitChanges('Install Breeze.');
     }
 
     private function installGitPreCommitHooks(string $directory, InputInterface $input, OutputInterface $output): void
     {
-        $output->writeln([
+        $this->installerContext->getOutput()->writeln([
             '',
             '<comment>Configuring git pre commit hooks...</comment>',
             '',
         ]);
 
-        $nodeBinary = $this->findNode();
+        $nodeBinary = $this->installerContext->node();
 
         if ($nodeBinary === null) {
             return;
@@ -571,22 +538,36 @@ class InstallCommand extends Command
             'npx husky init',
         ];
 
-        $this->runCommands($commands, $input, $output, workingPath: $directory);
+        $this->installerContext->runCommands($commands, $directory);
 
-        $this->replaceFile(
-            'husky/pre-commit',
-            $directory . '/.husky/pre-commit',
+        FileHandler::copyFile(
+            sourceFile: __DIR__ . '/../stubs/husky/pre-commit',
+            destination: $directory . '/.husky/pre-commit',
         );
 
-        $this->addNPMScript($directory, name: 'format-php', command: 'composer pint');
+        $packageJsonHandler = JsonFileHandler::init(new PackageJson($directory . DIRECTORY_SEPARATOR . 'package.json'));
 
-        $this->appendToPackageJson($directory, name: 'lint-staged', command: [
-            '*.php' => [
-                'npm run format-php',
-            ],
-        ]);
+        $packageJsonHandler->addScript(new NpmScript(
+            name: 'format-php',
+            command: 'composer pint',
+        ));
 
-        $this->commitChanges('Install husky and configure pre commit hooks.', $directory, $input, $output);
+        try {
+            $packageJsonHandler->save();
+
+            $packageJsonHandler->appendToPackageJson(new NpmScript(
+                name: 'lint-staged',
+                command: [
+                    '*.php' => [
+                        'npm run format-php',
+                    ],
+                ]
+            ));
+        } catch (JsonException $exception) {
+            $this->installerContext->getOutput()->writeln('Failed to update package.json.');
+        }
+
+        $this->installerContext->commitChanges('Install husky and configure pre commit hooks.');
     }
 
     private function configurePint(string $directory, InputInterface $input, OutputInterface $output): void
@@ -597,20 +578,31 @@ class InstallCommand extends Command
             '',
         ]);
 
-        $this->replaceFile(
-            'pint/pint.json',
-            $directory . '/pint.json',
+        FileHandler::copyFile(
+            sourceFile: __DIR__ . '/../stubs/pint/pint.json',
+            destination: $directory . '/pint.json',
         );
 
-        $this->addComposerScript($directory, name: 'pint', command: 'pint');
+        $composerJsonHandler = JsonFileHandler::init(new ComposerJson($directory . DIRECTORY_SEPARATOR . 'composer.json'));
+
+        $composerJsonHandler->addScript(new ComposerScript(
+            name: 'pint',
+            command: 'pint',
+        ));
+
+        try {
+            $composerJsonHandler->save();
+        } catch (JsonException $exception) {
+            $this->installerContext->getOutput()->writeln('Failed to update composer.json.');
+        }
 
         $commands = [
-            $this->findComposer() . ' pint',
+            $this->installerContext->composer() . ' pint',
         ];
 
-        $this->runCommands($commands, $input, $output, workingPath: $directory);
+        $this->installerContext->runCommands($commands, workingPath: $directory);
 
-        $this->commitChanges('Configure pint formatting.', $directory, $input, $output);
+        $this->installerContext->commitChanges('Configure pint formatting.');
     }
 
     private function installStubs(string $directory, InputInterface $input, OutputInterface $output): void
@@ -621,16 +613,16 @@ class InstallCommand extends Command
             '',
         ]);
 
-        $composerBinary = $this->findComposer();
+        $composerBinary = $this->installerContext->composer();
 
         $commands = [
             $composerBinary . ' require techieni3/laravel-stubs --dev',
-            $this->phpBinary() . ' artisan publish:stubs --force',
+            $this->installerContext->php() . ' artisan publish:stubs --force',
         ];
 
-        $this->runCommands($commands, $input, $output, workingPath: $directory);
+        $this->installerContext->runCommands($commands, $directory);
 
-        $this->commitChanges('Install opinionated stubs.', $directory, $input, $output);
+        $this->installerContext->commitChanges('Install opinionated stubs.');
     }
 
     private function installPest(string $directory, InputInterface $input, OutputInterface $output): void
@@ -641,30 +633,30 @@ class InstallCommand extends Command
             '',
         ]);
 
-        $composerBinary = $this->findComposer();
+        $composerBinary = $this->installerContext->composer();
 
         $commands = [
             $composerBinary . ' remove phpunit/phpunit --dev --no-update',
             $composerBinary . ' require pestphp/pest pestphp/pest-plugin-laravel --no-update --dev',
             $composerBinary . ' update',
-            $this->phpBinary() . ' ./vendor/bin/pest --init',
+            $this->installerContext->php() . ' ./vendor/bin/pest --init',
         ];
 
-        $this->runCommands($commands, $input, $output, workingPath: $directory, env: [
+        $this->installerContext->runCommands($commands, workingPath: $directory, env: [
             'PEST_NO_SUPPORT' => 'true',
         ]);
 
-        $this->replaceFile(
-            'pest/Feature.php',
-            $directory . '/tests/Feature/ExampleTest.php',
+        FileHandler::copyFile(
+            sourceFile: __DIR__ . '/../stubs/pest/Feature.php',
+            destination: $directory . '/tests/Feature/ExampleTest.php',
         );
 
-        $this->replaceFile(
-            'pest/Unit.php',
-            $directory . '/tests/Unit/ExampleTest.php',
+        FileHandler::copyFile(
+            sourceFile: __DIR__ . '/../stubs/pest/Unit.php',
+            destination: $directory . '/tests/Unit/ExampleTest.php',
         );
 
-        $this->commitChanges('Install Pest.', $directory, $input, $output);
+        $this->installerContext->commitChanges('Install Pest.');
     }
 
     private function installApi(mixed $directory, InputInterface $input, OutputInterface $output): void
@@ -676,39 +668,12 @@ class InstallCommand extends Command
         ]);
 
         $commands = array_filter([
-            trim($this->phpBinary() . ' artisan install:api'),
+            trim($this->installerContext->php() . ' artisan install:api'),
         ]);
 
-        $this->runCommands($commands, $input, $output, workingPath: $directory);
+        $this->installerContext->runCommands($commands);
 
-        $this->commitChanges('Install Api.', $directory, $input, $output);
-    }
-
-    private function installFilament(string $directory, InputInterface $input, OutputInterface $output): void
-    {
-        $output->writeln([
-            '',
-            '<comment>Configuring filament...</comment>',
-            '',
-        ]);
-
-        $composerBinary = $this->findComposer();
-
-        $commands = [
-            $composerBinary . ' require filament/filament -W',
-        ];
-
-        $this->runCommands($commands, $input, $output, workingPath: $directory);
-
-        $this->configureFilament($directory);
-
-        $commands = [
-            $this->phpBinary() . ' artisan filament:install --panels',
-        ];
-
-        $this->runCommands($commands, $input, $output, workingPath: $directory);
-
-        $this->commitChanges('Install Filament panel.', $directory, $input, $output);
+        $this->installerContext->commitChanges('Install Api.');
     }
 
     private function generateAppUrl($name): string
@@ -757,28 +722,34 @@ indent_size = 2
 indent_size = 4
 EOT;
 
-        $this->appendInFile($directory . '/.editorconfig', $jsonRule);
+        (FileHandler::init($directory . '/.editorconfig'))->append($jsonRule);
     }
 
     private function updateDatabaseSeederToRunWithoutModelEvents(mixed $directory): void
     {
-        $this->replaceInFile(
-            search: '// use Illuminate\Database\Console\Seeds\WithoutModelEvents;',
-            replace: 'use Illuminate\Database\Console\Seeds\WithoutModelEvents;',
-            file: $directory . '/database/seeders/DatabaseSeeder.php'
+        $databaseSeederHandler = FileHandler::init($directory . '/database/seeders/DatabaseSeeder.php');
+
+        $databaseSeederHandler->queueReplacement(
+            new Replacement(
+                search: '// use Illuminate\Database\Console\Seeds\WithoutModelEvents;',
+                replace: 'use Illuminate\Database\Console\Seeds\WithoutModelEvents;',
+            )
         );
 
-        $this->replaceInFile(
-            search: <<<'EOT'
+        $databaseSeederHandler->queueReplacement(
+            new Replacement(
+                search: <<<'EOT'
 class DatabaseSeeder extends Seeder
 {
 EOT,
-            replace: <<<'EOT'
+                replace: <<<'EOT'
 class DatabaseSeeder extends Seeder
 {
     use WithoutModelEvents;
 EOT,
-            file: $directory . '/database/seeders/DatabaseSeeder.php'
+            )
         );
+
+        $databaseSeederHandler->applyReplacements();
     }
 }
